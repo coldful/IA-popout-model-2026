@@ -16,18 +16,18 @@ class column:
         return None
     
     def is_full(self):
-        return self.pieces and self.pieces[1] in "XO"
+        return self.pieces and len(self.pieces) >= board.ROWS
     
     def poppable(self, player):
         return self.pieces and self.pieces[-1] == player
 
     def drop(self, player):
-        return column(self.pieces + (player,))
+        if not self.is_full():
+            return column((player,) + self.pieces)
     
     def pop(self, player):
         if self.pieces and self.pieces[-1] == player:
             return column(self.pieces[:-1])
-        return self
 
 class board:
     COLUMNS = 7
@@ -44,10 +44,11 @@ class board:
     def from_string(cls, string: str):
         rows = string.split("\n")
         cols = [column() for _ in range(cls.COLUMNS)]
-        for r in rows:
+        for r in range(cls.ROWS - 1, 0, -1):
             i = 0
-            for s in r.strip():
-                cols[i] = cols[i].drop(s)
+            for s in rows[r].strip():
+                if s in ("X", "O"):
+                    cols[i] = cols[i].drop(s)
                 i += 1
         return cls(positions=cols)
 
@@ -56,12 +57,23 @@ class board:
         for c in self.columns.keys():
             s += str(c) + " : " + str(self.columns[c]) + "\n"
         return s
+    
+    def copy(self):
+        new_brd = board()
+        new_brd.columns = self.columns.copy()
+        return new_brd
 
     def make_drop(self, column, player):
-        return self
+        new_col = self.columns[column].drop(player)
+        new_brd = self.copy()
+        new_brd.columns[column] = new_col
+        return new_brd
 
     def make_pop(self, column, player):
-        return self
+        new_col = self.columns[column].pop(player)
+        new_brd = self.copy()
+        new_brd.columns[column] = new_col
+        return new_brd
 
     def is_win(self, player):
         return False
