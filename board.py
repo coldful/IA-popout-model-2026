@@ -1,6 +1,12 @@
-class column:
-    pieces = ()
+from dataclasses import dataclass
 
+@dataclass(frozen=True)
+class Move:
+    kind: str
+    column: int
+
+class Column:
+    ROWS = 6
     def __init__(self, pieces = ()):
         self.pieces = pieces
 
@@ -16,35 +22,33 @@ class column:
         return None
     
     def is_full(self):
-        return self.pieces and len(self.pieces) >= board.ROWS
+        return self.pieces and len(self.pieces) >= self.ROWS
     
     def poppable(self, player):
-        return self.pieces and self.pieces[-1] == player
+        return len(self.pieces) > 0 and self.pieces[-1] == player
 
     def drop(self, player):
         if not self.is_full():
-            return column((player,) + self.pieces)
+            return Column((player,) + self.pieces)
     
     def pop(self, player):
         if self.pieces and self.pieces[-1] == player:
-            return column(self.pieces[:-1])
+            return Column(self.pieces[:-1])
 
-class board:
+class Board:
     COLUMNS = 7
-    ROWS = 6
-    columns = dict()
 
     def __init__(self, positions: list = None):
         if positions is None:
-            self.columns = {i: column() for i in range(self.COLUMNS)}
+            self.columns = {i: Column() for i in range(self.COLUMNS)}
         else:
             self.columns = {i: p for i, p in enumerate(positions)}
 
     @classmethod
     def from_string(cls, string: str):
         rows = string.split("\n")
-        cols = [column() for _ in range(cls.COLUMNS)]
-        for r in range(cls.ROWS - 1, 0, -1):
+        cols = [Column() for _ in range(cls.COLUMNS)]
+        for r in range(Column.ROWS - 1, -1, -1):
             i = 0
             for s in rows[r].strip():
                 if s in ("X", "O"):
@@ -59,9 +63,26 @@ class board:
         return s
     
     def copy(self):
-        new_brd = board()
+        new_brd = Board()
         new_brd.columns = self.columns.copy()
         return new_brd
+
+    def key(self, current_player):
+        return (
+            tuple(col.pieces for col in self.columns.values()),
+            current_player
+        )
+
+    def is_full(self):
+        return all(col.is_full() for col in self.columns.values())
+
+    def apply_move(self, move, player):
+        if move.kind == "drop":
+            return self.make_drop(move.column, player)
+        elif move.kind == "pop":
+            return self.make_pop(move.column, player)
+        else:
+            raise ValueError("Invalid move kind")
 
     def make_drop(self, column, player):
         new_col = self.columns[column].drop(player)
@@ -78,7 +99,7 @@ class board:
     def is_win(self, player):
         return False
     
-    def possible_moves(self, player):
+    def possible_move_dict(self, player):
         pos = {"drop": [], "pop": []}
 
         for num in self.columns.keys():
@@ -88,3 +109,49 @@ class board:
                 pos["pop"].append(num)
 
         return pos
+    
+    def possible_moves(self, player):
+        pos = self.possible_move_dict(player)
+        moves = []
+        for kind in pos.keys():
+            for column in pos[kind]:
+                moves.append(Move(kind, column))
+        return moves
+
+class GameState:
+    def __init__(self, board, player_to_move='X', last_move = None, states = []):
+        self.board = board
+        self.board_key = board.key(player_to_move)
+        self.player_to_move = player_to_move
+        self.last_move = last_move
+        self.states = states # when creating a new state, add +1 to the board state count by its key
+
+    def draw_legal(self):
+        if self.board.is_full() or self.states.count(self.board_key) >= 3:
+            return True
+        return False
+
+    def legal_moves(self):
+        moves = self.board.possible_moves(self.player_to_move)
+        if self.draw_legal():
+            moves.append(Move("draw", None))
+        return moves
+
+    def apply_move(self, move):
+        if move.kind == "draw":
+            return GameState(self.board, self.player_to_move, move, self.states + [self.board_key])
+        new_board = self.board.apply_move(move, self.player_to_move)
+        next_player = 'O' if self.player_to_move == 'X' else 'X'
+        return GameState(new_board, next_player, move, self.states + [self.board_key])
+
+class MCTSNode:
+    def __init__(self, state: GameState, parent=None, move=None, player_to_move='X'):
+        self.state = state
+        self.parent = parent
+        self.move = move
+
+        self.children = []
+        self.visits = 0
+        self.wins = 0.0
+
+        self.untried_moves = self._all_moves()

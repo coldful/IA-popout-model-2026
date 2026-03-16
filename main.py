@@ -1,11 +1,11 @@
-from board import board
+from board import Board
 
 def main():
-    brd = board()
+    brd = Board()
     print(brd)
     print(brd.possible_moves("X"))
 
-    brd = board.from_string(
+    brd = Board.from_string(
         """-------
         -------
         -------
